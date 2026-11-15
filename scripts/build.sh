@@ -40,22 +40,28 @@ abs() { echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"; }
 if [ "$1" != - ]; then
     ln -sfn "$(abs "$1")" "$dir/disc.iso"
 fi
-[ -e "$dir/disc.iso" ] || { echo "error: no disc image yet: give your Forza Horizon ISO instead of -" >&2; exit 1; }
 case "$2" in
     -) ;;
     none) rm -f "$dir/title-update" ;;
     *) ln -sfn "$(abs "$2")" "$dir/title-update" ;;
 esac
-iso="$(readlink -f "$dir/disc.iso")"
+files="$dir/files"
+# Once the disc is extracted and the update applied, their files may go: an
+# update then works from the extracted copies.
+iso=""
+[ ! -e "$dir/disc.iso" ] || iso="$(readlink -f "$dir/disc.iso")"
+[ -n "$iso" ] || [ -f "$files/game/default.xex" ] ||
+    { echo "error: no disc image: give your Forza Horizon ISO instead of -" >&2; exit 1; }
+tu=0
+[ ! -L "$dir/title-update" ] || tu=4
 tu_pkg=""
 [ ! -e "$dir/title-update" ] || tu_pkg="$(readlink -f "$dir/title-update")"
-tu=0
-[ -z "$tu_pkg" ] || tu=4
+[ "$tu" = 0 ] || [ -n "$tu_pkg" ] || [ -f "$files/tu4/default.xex" ] ||
+    { echo "error: the Title Update 4 package is gone: give it again, or none" >&2; exit 1; }
 tc="$dir/toolchain"
 work="$dir/source"
 game="$work/reimagined"
 sdk="$dir/sdk"
-files="$dir/files"
 out="$dir/game"
 stamps="$dir/.stamps"
 mkdir -p "$stamps" "$files"
@@ -82,8 +88,8 @@ fi
 # The manifests read the executables from ../extracted/game and ../extracted/tu4.
 ln -sfn "$files" "$game/extracted"
 
-iso_key="$(filekey "$iso")"
-if done_with extract "$iso_key" && [ -f "$files/game/default.xex" ]; then
+if [ -n "$iso" ]; then iso_key="$(filekey "$iso")"; else iso_key="$(cat "$stamps/extract" 2>/dev/null || true)"; fi
+if [ -f "$files/game/default.xex" ] && { [ -z "$iso" ] || done_with extract "$iso_key"; }; then
     echo "Disc already extracted - skipping."
 else
     step "Extracting $iso (a few minutes)"
@@ -98,8 +104,10 @@ else
 fi
 
 if [ "$tu" = 4 ]; then
-    tu_key="$iso_key $(if [ -d "$tu_pkg" ]; then dirkey "$tu_pkg"; else filekey "$tu_pkg"; fi)"
-    if done_with title-update "$tu_key" && [ -f "$files/tu4/default.xex" ]; then
+    if [ -z "$tu_pkg" ]; then tu_key="$(cat "$stamps/title-update" 2>/dev/null || true)"
+    elif [ -d "$tu_pkg" ]; then tu_key="$iso_key $(dirkey "$tu_pkg")"
+    else tu_key="$iso_key $(filekey "$tu_pkg")"; fi
+    if [ -f "$files/tu4/default.xex" ] && { [ -z "$tu_pkg" ] || done_with title-update "$tu_key"; }; then
         echo "Title Update 4 already applied - skipping."
     else
         step "Applying Title Update 4 ($tu_pkg)"

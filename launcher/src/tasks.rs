@@ -44,12 +44,21 @@ impl Paths {
     pub fn game(&self) -> PathBuf {
         self.dist().join("forza.sh")
     }
+    /// Whether a build can go on without a disc image: the last one is
+    /// still there, or its files are already extracted.
     pub fn game_files(&self) -> bool {
-        self.data.join("disc.iso").exists()
+        self.data.join("disc.iso").exists() || self.extracted()
     }
-    /// The title update package the last build used, if any.
+    pub fn extracted(&self) -> bool {
+        self.data.join("files/game/default.xex").is_file()
+    }
+    /// Whether the last build used a title update (its package may be gone
+    /// once applied).
     pub fn title_update(&self) -> bool {
-        self.data.join("title-update").exists()
+        self.data.join("title-update").symlink_metadata().is_ok()
+    }
+    pub fn update_applied(&self) -> bool {
+        self.data.join("files/tu4/default.xex").is_file()
     }
     pub fn built(&self) -> bool {
         self.game().is_file()

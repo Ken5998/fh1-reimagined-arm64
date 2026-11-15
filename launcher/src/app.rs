@@ -83,8 +83,10 @@ impl LauncherApp {
     }
 
     fn start(&mut self, task: Task) {
-        let iso = self.iso();
-        let tu = self.tu();
+        // A disc or update that was moved away after the build is not
+        // needed again: its extracted files are used.
+        let iso = self.iso().filter(|p| p.is_file() || !self.paths.extracted());
+        let tu = self.tu().filter(|p| p.exists() || !self.paths.update_applied());
         if task == Task::Build {
             match &iso {
                 Some(p) if !p.is_file() => {
