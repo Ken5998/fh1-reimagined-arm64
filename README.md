@@ -99,7 +99,8 @@ To try it, set the game's launch options in Steam (Properties > Shortcut) to
 and remove them to go back to the emulated GPU. While you play, the shaders
 the library lacks are written to `~/.local/share/FH1ReImagined-arm64/shader-dump`;
 press **Update** in the launcher afterwards and the next build adds them.
-`forza.log` tells how it went (the lines with `[nativo]` and `[fh1 nativo]`).
+`forza.log` tells how it went (the lines with `[nativo]` and `[fh1 nativo]`),
+and `renderer.txt` beside it which renderer the last start chose and why.
 
 ## How it builds
 

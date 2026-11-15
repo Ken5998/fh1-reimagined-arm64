@@ -33,17 +33,29 @@ log="$data/user/forza.log"
 # (fh1_shaders.nfsp beside this). Shaders the library lacks (the D3D
 # library's own, loose in the executable) are written to ../shader-dump as you
 # play; the next build adds them to the library.
+# What was chosen, and why, goes to ../user/renderer.txt beside the log.
 renderer=()
+library="$here/fh1_shaders.nfsp"
+if [ -f "$library" ]; then
+    library_note="$library, $(stat -c '%s bytes, %y' "$library")"
+else
+    library_note="missing ($library): the launcher's Build/Update makes it"
+fi
+chosen="emulated GPU"
 if [ "${FH1_RENDERER:-emulated}" = native ]; then
-    if [ -f "$here/fh1_shaders.nfsp" ]; then
+    if [ -f "$library" ]; then
         mkdir -p "$data/shader-dump"
         renderer=(--nfsmw_renderizador=nativo
             --fh2_nativo_vertices_sin_espera=true --fh2_nativo_destinos_exactos=true
             --fh2_nativo_volcar_sueltos="$data/shader-dump")
+        chosen="native renderer"
     else
-        echo "warning: no $here/fh1_shaders.nfsp (run the launcher's Build again): using the emulated GPU" >&2
+        chosen="emulated GPU (no shader library)"
+        echo "warning: no $library (run the launcher's Build again): using the emulated GPU" >&2
     fi
 fi
+printf '%s\nFH1_RENDERER=%s\nshader library: %s\nrenderer: %s\n' "$(date '+%F %T')" \
+    "${FH1_RENDERER-<not set>}" "$library_note" "$chosen" > "$data/user/renderer.txt" || true
 
 export LD_LIBRARY_PATH="$here${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$here/forza" "${renderer[@]}" --game_data_root="$game_files" "${update[@]}" \
