@@ -10,6 +10,8 @@
 # WORKDIR/reimagined   the patched game project; forza-recomp/generated*,
 #                      forza-recomp/out and the game files are left alone
 # WORKDIR/reiglue      the patched SDK; its out/ is left alone
+# WORKDIR/fh2-recompiled  FH2 Recompiled's native renderer and shader tools
+#                      (upstream.json's renderer_commit), copied into the game
 #
 # Run again, it checks out and patches again; files that end up the same keep
 # their times (scripts/keep-times.py), so a later build recompiles only what
@@ -62,6 +64,21 @@ git -C "$sdk" -c submodule.thirdparty/moltenvk.update=none \
         submodule update --init --recursive --force -q
 echo "ReIGlue $(git -C "$sdk" rev-parse --short HEAD)"
 
+# FH2 Recompiled's native renderer (app/src/nativo) and its shader tools
+# (tools/xenos), at the commit in upstream.json; only those folders.
+fh2="$work/fh2-recompiled"
+renderer="$(field renderer_commit)"
+if [ ! -d "$fh2/.git" ]; then
+    git init -q "$fh2"
+    git -C "$fh2" remote add origin "$(field renderer_repository)"
+    git -C "$fh2" sparse-checkout set app/src/nativo tools/xenos
+fi
+if [ "$(git -C "$fh2" rev-parse -q --verify HEAD 2>/dev/null)" != "$renderer" ]; then
+    git -C "$fh2" fetch -q --depth 1 --filter=blob:none origin "$renderer"
+fi
+git -C "$fh2" -c advice.detachedHead=false checkout -q --force "$renderer"
+echo "FH2 Recompiled $(git -C "$fh2" rev-parse --short HEAD) (native renderer)"
+
 apply() {  # apply TREE PATCH...: git apply each patch onto TREE
     local tree="$1" patch
     shift
@@ -76,6 +93,15 @@ apply() {  # apply TREE PATCH...: git apply each patch onto TREE
 apply "$sdk/thirdparty/sdl3" "$sdk"/patches/sdl3/*.patch
 apply "$sdk/thirdparty/FFmpeg" "$sdk"/patches/ffmpeg/*.patch
 apply "$sdk" "$repo"/patches/sdk/*.patch
+# The renderer goes into the game as forza-recomp/src/nativo, with the two
+# presenter shaders of ReIGlue it includes; patches/game/ adapts it to FH1 and
+# builds it in (off unless nfsmw_renderizador = nativo).
+nativo="$game/forza-recomp/src/nativo"
+rm -rf "$nativo"
+cp -R "$fh2/app/src/nativo" "$nativo"
+mkdir -p "$nativo/vulkan_spirv"
+cp "$sdk/src/ui/shaders/vulkan_spirv/guest_output_bilinear_ps.h" \
+    "$sdk/src/ui/shaders/vulkan_spirv/guest_output_triangle_strip_rect_vs.h" "$nativo/vulkan_spirv/"
 apply "$game" "$repo"/patches/game/*.patch
 
 python3 "$repo/scripts/keep-times.py" restore "$times"

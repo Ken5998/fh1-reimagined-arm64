@@ -1,0 +1,593 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Kenan=20Kasumovi=C4=87?=
+ <46025606+Ken5998@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 17:15:58 +0000
+Subject: [PATCH] feat: build FH2 Recompiled's native renderer in, off by
+ default
+
+scripts/prepare.sh copies FH2 Recompiled's native renderer (app/src/nativo,
+from NFSMW Android Evolved's) into forza-recomp/src/nativo. It is built
+with FH2's branches, since FH2 on the Xbox 360 runs on FH1's engine, and a
+few FH1 answers:
+
+- the app takes its graphics system with nfsmw_renderizador = nativo, as
+  FH2 Recompiled's does; the GPU plugin is not loaded then;
+- the TU4 shader constructors and the vertex fetch patcher are hooked at
+  FH2's addresses shifted the way the rest of the D3D library is (weak
+  references, so a missing function still links);
+- vertex shaders whose exports D3D relinked or nulled are matched to
+  their containers (the rules of ReImagined's fxobj_shaders.py);
+- ReIGlue's presenter has no frame generation and its settings overlay
+  cannot hide entries: those calls are left out;
+- the shader library is fh1_shaders.nfsp.
+
+The host compile check builds it with the same definitions.
+---
+ forza-recomp/CMakeLists.txt                   |  25 ++++
+ forza-recomp/src/forza_app.h                  |   9 ++
+ .../src/nativo/fh1_nativo_enlaces.cpp         |  58 ++++++++
+ .../src/nativo/fh1_nativo_ganchos.cpp         | 127 ++++++++++++++++++
+ .../src/nativo/nfsmw_ajustes_graficos.cpp     |   2 +
+ .../src/nativo/nfsmw_nativo_destinos.cpp      |  46 ++++++-
+ .../src/nativo/nfsmw_nativo_shaders.cpp       |  83 ++++++++++++
+ .../src/nativo/nfsmw_nativo_shaders.h         |   5 +
+ .../src/nativo/nfsmw_nativo_sistema.cpp       |  12 +-
+ tools/cmake/linux-host-check/CMakeLists.txt   |   6 +
+ 10 files changed, 368 insertions(+), 5 deletions(-)
+ create mode 100644 forza-recomp/src/nativo/fh1_nativo_enlaces.cpp
+ create mode 100644 forza-recomp/src/nativo/fh1_nativo_ganchos.cpp
+
+diff --git a/forza-recomp/CMakeLists.txt b/forza-recomp/CMakeLists.txt
+index 3b48bb2..c31ac7f 100644
+--- a/forza-recomp/CMakeLists.txt
++++ b/forza-recomp/CMakeLists.txt
+@@ -249,6 +249,31 @@ set(FORZA_SOURCES
+     src/platform/xr.cpp
+ )
+ 
++# The native renderer of FH2 Recompiled (github.com/gabrick75/fh2-recompiled app/src/nativo, GPL-3.0, from
++# NFSMW Android Evolved's): with nfsmw_renderizador = nativo it reads the command ring and draws with Vulkan
++# instead of emulating the Xenos GPU, from a shader library made from the player's game (fh1_shaders.nfsp beside
++# the executable). FH2's engine is FH1's, so it is built with FH2's branches (FH2_RECOMP) and FH1's few own
++# answers (FH1_RECOMP, src/nativo/fh1_*.cpp). Copied in by fh1-reimagined-arm64's scripts/prepare.sh.
++set(FORZA_NATIVE_RENDERER_SOURCES
++    src/nativo/nfsmw_nativo_sistema.cpp
++    src/nativo/nfsmw_nativo_destinos.cpp
++    src/nativo/nfsmw_nativo_dibujos.cpp
++    src/nativo/nfsmw_nativo_shaders.cpp
++    src/nativo/nfsmw_nativo_ganchos.cpp
++    src/nativo/nfsmw_nativo_texturas_pool.cpp
++    src/nativo/nfsmw_nativo_captura.cpp
++    src/nativo/nfsmw_shader_library.cpp
++    src/nativo/nfsmw_espera_anillo.cpp
++    src/nativo/nfsmw_ajustes_graficos.cpp
++    src/nativo/fh1_nativo_ganchos.cpp
++    src/nativo/fh1_nativo_enlaces.cpp
++)
++list(APPEND FORZA_SOURCES ${FORZA_NATIVE_RENDERER_SOURCES})
++# Its Vulkan headers see the WSI stubs, as src/platform/vulkan_hooks.cpp does.
++set_source_files_properties(${FORZA_NATIVE_RENDERER_SOURCES} PROPERTIES
++    COMPILE_DEFINITIONS "FH2_RECOMP=1;FH1_RECOMP=1"
++    INCLUDE_DIRECTORIES "${CMAKE_CURRENT_SOURCE_DIR}/src/nativo;${CMAKE_CURRENT_SOURCE_DIR}/src/platform/wsi_stubs")
++
+ # The D3D trace (docs/native-renderer.md "Tools"): counting wrappers around the TU4 D3D library's
+ # functions that tag the command-buffer dwords each one writes, for the GPU plugin's PM4 trace
+ # (ReIGlue built with REXGLUE_FH1_PM4_TRACE). A study build only: it costs every D3D call.
+diff --git a/forza-recomp/src/forza_app.h b/forza-recomp/src/forza_app.h
+index 7937a33..d0af37b 100644
+--- a/forza-recomp/src/forza_app.h
++++ b/forza-recomp/src/forza_app.h
+@@ -20,6 +20,8 @@
+ #include "platform/vulkan_hooks.h"
+ #include "platform/xr.h"
+ #include "platform/ultrawide.h"
++#include "nativo/nfsmw_ajustes_graficos.h"
++#include "nativo/nfsmw_nativo_sistema.h"
+ #include <rex/ui/window.h>
+ #include <rex/cvar.h>
+ #include <array>
+@@ -84,6 +86,13 @@ class ForzaApp : public rex::ReXApp {
+     // VR (vr_mode): the OpenXR runtime must create the Vulkan instance and device, so it is set
+     // up before the GPU plugin makes its provider (src/platform/xr.h).
+     forza::xr::Prepare();
++    // The native renderer (FH2 Recompiled's, src/nativo): with nfsmw_renderizador = nativo the graphics system is
++    // its own, drawing the game's command ring with Vulkan, and the GPU plugin is not loaded. Off by default.
++    if (!config.graphics && nfsmw::nativo::Activo()) {
++      config.graphics = nfsmw::nativo::CrearSistemaGrafico();
++      // FXAA (nfsmw_antialiasing) and the optional post-processing reach its output pass through these.
++      nfsmw::ajustes::VigilarAjustesEnVivo();
++    }
+     if (!config.graphics && config.gpu_plugin.empty()) {
+       config.gpu_plugin = "xenos";
+     }
+diff --git a/forza-recomp/src/nativo/fh1_nativo_enlaces.cpp b/forza-recomp/src/nativo/fh1_nativo_enlaces.cpp
+new file mode 100644
+index 0000000..a02d3fc
+--- /dev/null
++++ b/forza-recomp/src/nativo/fh1_nativo_enlaces.cpp
+@@ -0,0 +1,58 @@
++// What the native renderer (FH2 Recompiled's, src/nativo) asks of the game around it, answered for Forza Horizon 1:
++//   - FH2 Recompiled's fh2_nativo_enlaces.cpp as it is: neutral answers to what NFSMW Android Evolved's renderer
++//     asks of Most Wanted's own modules (road reflection on demand, the 30 FPS guard, the scenery LOD summary,
++//     the D3D composite marker, the AA table);
++//   - what FH2 Recompiled's own app files give it: the world detail factors it reads (fh2_mundo_*, 1 = as the
++//     game asks), the HUD squeeze of its ultrawide view (none here), and its one-tile hook (none here: on the
++//     handheld ReImagined's scene_msaa=off already draws the scene in one pass, so nothing is tiled);
++//   - present_frame_gen, which FH2 Recompiled's SDK presenter has and ReIGlue's does not: always off.
++// And the switch: nfsmw_renderizador = nativo (forza.sh sets it with FH1_RENDERER=native).
++#include <atomic>
++#include <cstdint>
++#include <string>
++
++#include <rex/cvar.h>
++
++REXCVAR_DEFINE_DOUBLE(fh2_mundo_grama, 1.0, "FH1 native renderer",
++                      "Native renderer: the procedural vegetation's fade distances, as a factor (1 = the game's)");
++REXCVAR_DEFINE_DOUBLE(fh2_mundo_multidao, 1.0, "FH1 native renderer",
++                      "Native renderer: the crowd (0 skips its draws)");
++REXCVAR_DEFINE_BOOL(present_frame_gen, false, "FH1 native renderer",
++                    "Not available in this build (FH2 Recompiled's presenter frame generation)");
++
++// Game frames, one per Swap; only for the "game ahead" measurement. The Swap is not hooked here.
++std::atomic<uint64_t> g_nfsmw_fotogramas_juego{0};
++
++bool Fh2UmaFaixaAtiva() { return false; }
++float Fh2TelaFactorHud() { return 1.0f; }
++
++namespace nfsmw::reflejo_demanda {
++void AnotarLectura() {}
++void AnotarCopia() {}
++void AnotarSwap() {}
++bool MedirVisibilidad() { return false; }
++bool VisibilidadComprobada() { return false; }
++void AnotarVisible(bool) {}
++void AnotarOculto() {}
++void AnotarTestigo(bool) {}
++}  // namespace nfsmw::reflejo_demanda
++
++namespace nfsmw::guardia30 {
++void Latir(double) {}
++void Informe() {}
++bool SinSombras(bool del_usuario) { return del_usuario; }
++}  // namespace nfsmw::guardia30
++
++namespace nfsmw::escenario_lod {
++std::string Resumen() { return "LOD del escenario: no aplica en FH1"; }
++}  // namespace nfsmw::escenario_lod
++
++namespace nfsmw::render_targets {
++// Occlusion queries counted with one sample per pixel (the scene in one pass, without MSAA).
++uint32_t MuestrasOriginalesModoActual(const uint8_t*) { return 1; }
++}  // namespace nfsmw::render_targets
++
++namespace nfsmw::nativo {
++void ActivarConsumidorMarcadores(bool) {}
++void AnotarComprobacionMarcador(bool, uint32_t, uint32_t, uint32_t, uint32_t) {}
++}  // namespace nfsmw::nativo
+diff --git a/forza-recomp/src/nativo/fh1_nativo_ganchos.cpp b/forza-recomp/src/nativo/fh1_nativo_ganchos.cpp
+new file mode 100644
+index 0000000..0bcec90
+--- /dev/null
++++ b/forza-recomp/src/nativo/fh1_nativo_ganchos.cpp
+@@ -0,0 +1,127 @@
++// Forza Horizon 1 (Title Update 4)'s hooks for the native renderer (FH2 Recompiled's, src/nativo, built with
++// FH2_RECOMP and FH1_RECOMP).
++//
++// FH1 and FH2 on the Xbox 360 share the engine and the XDK's Direct3D library, and in TU4 that library is FH2's
++// code at shifted addresses:
++//   - its low part by 0xC5678: the swap is sub_82AACAA0 here and sub_82B72118 in FH2, RunCommandBuffer of
++//     type 10 sub_82AA9898 and sub_82B6EF10. The shader constructors sit between them in FH2 (CreatePixelShader
++//     sub_82B70280, CreateVertexShader sub_82B70468), so here they are sub_82AAAC08 and sub_82AAADF0;
++//   - around the draws by 0x201B0 (DrawVertices sub_82445F18 / sub_82425D68, DrawIndexedVertices sub_82446330 /
++//     sub_82426180, RunCommandBuffer sub_824469B0 / sub_82426800) and by 0x20198 a little lower (the DRAW_INDX
++//     writer sub_82438B20 / sub_82418988). FH2's vertex fetch patcher (sub_8241ACA0) lies between those, so
++//     here it starts between 0x8243AE38 and 0x8243AE50.
++//
++// The originals are weak references: a hook whose function the codegen did not make is never called and links
++// anyway. Every patcher candidate is hooked; only a call whose object is a vertex shader the constructor hook
++// saw counts, so a neighbour that happens to start in that range reports nothing. The log's "[fh1 nativo]" line
++// says which candidates ran (Fh1ResumenGanchos).
++
++#include <atomic>
++#include <cstdint>
++#include <string>
++
++#include <fmt/format.h>
++
++#include <rex/hook.h>
++#include <rex/logging.h>
++#include <rex/ppc/func.h>
++
++#include "nfsmw_nativo_ganchos.h"
++
++namespace nativo = nfsmw::nativo;
++
++#if defined(FORZA_TITLE_UPDATE) && FORZA_TITLE_UPDATE == 4
++
++namespace {
++
++std::atomic<uint64_t> g_creados_ps{0}, g_creados_vs{0};
++
++// A heap or physical address a constructor could have been handed a shader container at.
++bool DireccionPlausible(uint32_t direccion) {
++  return direccion >= 0x40000000u && (direccion & 3) == 0 && direccion < 0xFFFF0000u;
++}
++
++constexpr uint32_t kCandidatosParcheador[] = {0x8243AE38, 0x8243AE3C, 0x8243AE40, 0x8243AE44,
++                                              0x8243AE48, 0x8243AE4C, 0x8243AE50};
++constexpr size_t kNumCandidatos = sizeof(kCandidatosParcheador) / sizeof(kCandidatosParcheador[0]);
++std::atomic<uint64_t> g_llamadas[kNumCandidatos]{};
++std::atomic<uint64_t> g_parches[kNumCandidatos]{};
++
++void Parcheador(size_t candidato, uint32_t objeto, uint32_t destino, uint32_t variante) {
++  g_llamadas[candidato].fetch_add(1, std::memory_order_relaxed);
++  if (!objeto || !nativo::ShaderDeObjeto(objeto)) {
++    return;
++  }
++  if (g_parches[candidato].fetch_add(1, std::memory_order_relaxed) < 4) {
++    REXLOG_INFO("[fh1 nativo] parcheador de fetch sub_{:08X}: VS {:08X} -> {:08X} (variante {})",
++                kCandidatosParcheador[candidato], objeto, destino, variante);
++  }
++  nativo::Fh2AnotarParcheVs(objeto, destino);
++}
++
++}  // namespace
++
++// CreatePixelShader / CreateVertexShader (r3 = 2008 container, the object comes back in r3).
++extern "C" __attribute__((weak)) REX_FUNC(__imp__sub_82AAAC08);
++REX_HOOK_RAW(sub_82AAAC08) {
++  const uint32_t contenedor = ctx.r3.u32;
++  const auto* entrada =
++      DireccionPlausible(contenedor) ? nativo::ganchos_detalle::IdentificarCreacion(base, contenedor, false) : nullptr;
++  __imp__sub_82AAAC08(ctx, base);
++  g_creados_ps.fetch_add(1, std::memory_order_relaxed);
++  nativo::ganchos_detalle::RecordarCreacion(ctx.r3.u32, entrada, false);
++}
++
++extern "C" __attribute__((weak)) REX_FUNC(__imp__sub_82AAADF0);
++REX_HOOK_RAW(sub_82AAADF0) {
++  const uint32_t contenedor = ctx.r3.u32;
++  const auto* entrada =
++      DireccionPlausible(contenedor) ? nativo::ganchos_detalle::IdentificarCreacion(base, contenedor, true) : nullptr;
++  __imp__sub_82AAADF0(ctx, base);
++  g_creados_vs.fetch_add(1, std::memory_order_relaxed);
++  nativo::ganchos_detalle::RecordarCreacion(ctx.r3.u32, entrada, true);
++}
++
++// The vertex fetch patcher (FH2: r3 = VS object, r4 = destination, r7 = variant).
++#define FH1_PARCHEADOR(indice, direccion)                                                    \
++  extern "C" __attribute__((weak)) REX_FUNC(__imp__sub_##direccion);                         \
++  REX_HOOK_RAW(sub_##direccion) {                                                            \
++    const uint32_t objeto = ctx.r3.u32, destino = ctx.r4.u32, variante = ctx.r7.u32;         \
++    __imp__sub_##direccion(ctx, base);                                                       \
++    Parcheador(indice, objeto, destino, variante);                                           \
++  }
++FH1_PARCHEADOR(0, 8243AE38)
++FH1_PARCHEADOR(1, 8243AE3C)
++FH1_PARCHEADOR(2, 8243AE40)
++FH1_PARCHEADOR(3, 8243AE44)
++FH1_PARCHEADOR(4, 8243AE48)
++FH1_PARCHEADOR(5, 8243AE4C)
++FH1_PARCHEADOR(6, 8243AE50)
++#undef FH1_PARCHEADOR
++
++std::string Fh1ResumenGanchos() {
++  std::string texto = fmt::format("creados PS {} VS {} (constructores {}{}); parcheador:",
++                                  g_creados_ps.load(std::memory_order_relaxed),
++                                  g_creados_vs.load(std::memory_order_relaxed),
++                                  __imp__sub_82AAAC08 ? "sub_82AAAC08 " : "falta sub_82AAAC08 ",
++                                  __imp__sub_82AAADF0 ? "sub_82AAADF0" : "falta sub_82AAADF0");
++  bool alguno = false;
++  for (size_t i = 0; i < kNumCandidatos; ++i) {
++    const uint64_t llamadas = g_llamadas[i].load(std::memory_order_relaxed);
++    if (llamadas) {
++      texto += fmt::format(" sub_{:08X} {} llamadas, {} con un VS conocido;", kCandidatosParcheador[i], llamadas,
++                           g_parches[i].load(std::memory_order_relaxed));
++      alguno = true;
++    }
++  }
++  if (!alguno) {
++    texto += " ningun candidato llamado";
++  }
++  return texto;
++}
++
++#else  // the disc's executable: the native renderer runs without these hooks
++
++std::string Fh1ResumenGanchos() { return "ninguno (build sin Title Update 4)"; }
++
++#endif
+diff --git a/forza-recomp/src/nativo/nfsmw_ajustes_graficos.cpp b/forza-recomp/src/nativo/nfsmw_ajustes_graficos.cpp
+index 40dca70..354b249 100644
+--- a/forza-recomp/src/nativo/nfsmw_ajustes_graficos.cpp
++++ b/forza-recomp/src/nativo/nfsmw_ajustes_graficos.cpp
+@@ -335,7 +335,9 @@ void OcultarAjustesSinEfecto() {
+     std::string& lista = rex::cvar::GetFlagInfo(nombre) ? registrados : sin_registrar;
+     lista += (lista.empty() ? "" : ", ") + nombre;
+   }
++#if !defined(FH1_RECOMP)  // ReIGlue's settings overlay cannot hide entries
+   rex::ui::OcultarAjustesEnMenu(ocultos);
++#endif
+   REXLOG_INFO("[ajustes] menu: fuera, porque no hacen nada con el renderizador nativo o los sustituye la categoria "
+               "Graficos: {}; no registrados en esta build: {}",
+               registrados.empty() ? "ninguno" : registrados, sin_registrar.empty() ? "ninguno" : sin_registrar);
+diff --git a/forza-recomp/src/nativo/nfsmw_nativo_destinos.cpp b/forza-recomp/src/nativo/nfsmw_nativo_destinos.cpp
+index 89884b2..787e8d4 100644
+--- a/forza-recomp/src/nativo/nfsmw_nativo_destinos.cpp
++++ b/forza-recomp/src/nativo/nfsmw_nativo_destinos.cpp
+@@ -827,6 +827,34 @@ namespace xenos = rex::graphics::xenos;
+ using rex::ui::vulkan::VulkanDevice;
+ using rex::ui::vulkan::VulkanPresenter;
+ 
++#if defined(FH1_RECOMP)
++// Forza Horizon 1 (ReImagined's SDK, ReIGlue): its presenter has no frame generation, so present_frame_gen
++// (defined off in fh1_nativo_enlaces.cpp) never asks for the game's motion. The struct the velocity pass fills
++// is FH2 Recompiled's SDK one, kept here so that code stays as upstream's.
++struct Fh1FrameGenMotion {
++  VkImage image = VK_NULL_HANDLE;
++  VkImageView view = VK_NULL_HANDLE;
++  VkFormat format = VK_FORMAT_UNDEFINED;
++  uint32_t width = 0;
++  uint32_t height = 0;
++  uint64_t version = 0;
++  float params[4] = {};
++  bool valid() const { return view != VK_NULL_HANDLE; }
++  static constexpr uint32_t kConstantRows = 224 + 2;
++  VkImage depth_image = VK_NULL_HANDLE;
++  VkImageView depth_view = VK_NULL_HANDLE;
++  VkImageView stencil_view = VK_NULL_HANDLE;
++  uint32_t depth_width = 0;
++  uint32_t depth_height = 0;
++  uint64_t depth_version = 0;
++  std::array<float, kConstantRows * 4> constants{};
++  bool has_depth() const { return depth_view != VK_NULL_HANDLE; }
++};
++#define NFSMW_FRAME_GEN_MOTION Fh1FrameGenMotion
++#else
++#define NFSMW_FRAME_GEN_MOTION VulkanPresenter::FrameGenMotion
++#endif
++
+ constexpr VkFormat kFormatoColor = VK_FORMAT_R8G8B8A8_UNORM;
+ constexpr uint32_t kAltoMaximoDestino = 2048;
+ constexpr VkImageSubresourceRange kRangoColor = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+@@ -3014,12 +3042,17 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
+     fh2_hdr_base_escena_ = UINT32_MAX;
+     // present_frame_gen uses the mask too: the HUD of the frame in the middle is the current frame's, not
+     // interpolated (the game's velocity is the scene's under it, and the minimap turns instead of moving).
++#if defined(FH1_RECOMP)
++    // ReIGlue's HDR output keeps no HUD mask.
++    fh2_hdr_mascara_activa_ = REXCVAR_GET(present_frame_gen);
++#else
+     fh2_hdr_mascara_activa_ = rex::ui::vulkan::GetHdrOutputState().hud_mask || REXCVAR_GET(present_frame_gen);
++#endif
+     // present_frame_gen: this frame's velocity, if the game drew one.
+     if (fh2_velocidad_pendiente_) {
+       Fh2CopiarVelocidad();
+     }
+-    VulkanPresenter::FrameGenMotion movimiento;
++    NFSMW_FRAME_GEN_MOTION movimiento;
+     if (fh2_velocidad_lista_ >= 0) {
+       const Imagen& velocidad = fh2_velocidad_[size_t(fh2_velocidad_lista_)];
+       movimiento.image = velocidad.imagen;
+@@ -3345,7 +3378,7 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
+           llamada = true;
+           auto& contexto =
+               static_cast<VulkanPresenter::VulkanGuestOutputRefreshContext&>(base_contexto);
+-#if defined(FH2_RECOMP)
++#if defined(FH2_RECOMP) && !defined(FH1_RECOMP)
+           contexto.SetFrameGenMotion(movimiento);
+ #endif
+           pintado = PintarSalida(contexto, origen_frontal ? *origen_frontal : resuelta.imagen, w, h,
+@@ -5906,7 +5939,12 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
+ #endif
+     // Several per frame, the same ones every frame (64 % of a session log): the first 20 unless log_detalhado.
+     static std::atomic<uint32_t> resueltas_registradas{0};
++#if defined(FH1_RECOMP)
++    // ReIGlue has no rex::LogRepetido: the first 20.
++    if (resueltas_registradas.fetch_add(1, std::memory_order_relaxed) < 20) {
++#else
+     if (rex::LogRepetido(resueltas_registradas, "[nativo] C2: textura resuelta")) {
++#endif
+       REXLOG_INFO("[nativo] C2: textura resuelta en {:08X}, {}x{}, formato {}", base, ancho, alto, formato);
+     }
+     if (dibujos_) {
+@@ -8448,8 +8486,8 @@ class DestinosVulkan final : public DestinosNativos, public ContextoDestinos {
+   uint64_t fh2_profundidad_version_ = 0;
+   bool fh2_profundidad_lista_ = false;
+   uint32_t fh2_velocidad_profundidad_ = 0;
+-  std::array<float, VulkanPresenter::FrameGenMotion::kConstantRows * 4> fh2_velocidad_constantes_{};
+-  std::array<float, VulkanPresenter::FrameGenMotion::kConstantRows * 4> fh2_velocidad_constantes_lista_{};
++  std::array<float, NFSMW_FRAME_GEN_MOTION::kConstantRows * 4> fh2_velocidad_constantes_{};
++  std::array<float, NFSMW_FRAME_GEN_MOTION::kConstantRows * 4> fh2_velocidad_constantes_lista_{};
+   bool fh2_hdr_mascara_activa_ = false;        // the presenter wants it (from the last Swap)
+   uint32_t fh2_hdr_base_escena_ = UINT32_MAX;  // EDRAM base of this frame's last 2_10_10_10 draw
+   bool fh2_hdr_foto_intentada_ = false;        // this frame
+diff --git a/forza-recomp/src/nativo/nfsmw_nativo_shaders.cpp b/forza-recomp/src/nativo/nfsmw_nativo_shaders.cpp
+index c7a1f02..0108aec 100644
+--- a/forza-recomp/src/nativo/nfsmw_nativo_shaders.cpp
++++ b/forza-recomp/src/nativo/nfsmw_nativo_shaders.cpp
+@@ -53,6 +53,76 @@ constexpr uint32_t kFetchConserva[3] = {0x0007FFFF, 0x80000FFF, 0x80000000};
+ 
+ constexpr uint32_t kMaxAvisos = 48;
+ 
++#if defined(FH1_RECOMP)
++/*
++ * Forza Horizon 1: what its D3D changes in a vertex shader when it binds it (ReImagined's
++ * tools/fxobj_shaders.py, derive_binding, checked against every shader the game loaded on a PC): the
++ * vertex fetches' layout fields, each ALU export's destination (relinked to the pixel shader's inputs), and
++ * the exports the pixel shader does not read, made into an ALU instruction with no writes. The library's
++ * translation links the stages by semantic, so a shader that differs from its container only there is that
++ * container. Used when the patcher hook has not reported the copy (fh1_nativo_ganchos.cpp).
++ */
++constexpr uint32_t kFh1FetchLayout[3] = {0x3FF00000u, 0x7F3F7FFFu, 0x7FFFFFFFu};
++constexpr uint32_t kFh1Exportacion = 0x01003F3Fu;
++constexpr uint32_t kFh1AluNop[3] = {0xC8000000u, 0x00000000u, 0x02000000u};
++
++// The instruction indices of the vertex fetches, from the exec control flow instructions (fxobj_shaders.py
++// vertex_fetch_slots).
++std::vector<bool> Fh1RanurasFetch(std::span<const uint32_t> w) {
++  std::vector<bool> ranuras(w.size() / 3 + 1, false);
++  size_t fin_cf = SIZE_MAX;
++  for (size_t i = 0; 3 * i + 2 < w.size() && i < fin_cf; ++i) {
++    const uint64_t a = w[3 * i], b = w[3 * i + 1], c = w[3 * i + 2];
++    const uint64_t instrucciones[2] = {a | ((b & 0xFFFFu) << 32), (b >> 16) | (c << 16)};
++    for (const uint64_t ins : instrucciones) {
++      const uint32_t op = uint32_t(ins >> 44) & 0xF;
++      if (op == 1 || op == 2 || op == 3 || op == 4 || op == 5 || op == 6 || op == 13 || op == 14) {
++        const size_t direccion = size_t(ins & 0xFFF), cuenta = size_t(ins >> 12) & 7;
++        const uint32_t secuencia = uint32_t(ins >> 16) & 0xFFF;
++        fin_cf = std::min(fin_cf, direccion);
++        for (size_t k = 0; k < cuenta; ++k) {
++          const size_t indice = direccion + k;
++          if (((secuencia >> (2 * k)) & 1) && 3 * indice < w.size() && (w[3 * indice] & 0x1F) == 0 &&
++              indice < ranuras.size()) {
++            ranuras[indice] = true;
++          }
++        }
++        if (op == 2 || op == 4 || op == 6 || op == 14) {
++          return ranuras;
++        }
++      }
++    }
++  }
++  return ranuras;
++}
++
++// Whether `cargado` (as the ring loaded it) is the container `original` (its unmasked microcode) bound by D3D.
++bool Fh1MismoVsEnlazado(std::span<const uint32_t> original, std::span<const uint32_t> cargado) {
++  if (original.size() != cargado.size() || original.size() % 3) {
++    return false;
++  }
++  const std::vector<bool> ranuras = Fh1RanurasFetch(original);
++  for (size_t i = 0; i < original.size(); ++i) {
++    const uint32_t x = original[i], y = cargado[i];
++    if (x == y) {
++      continue;
++    }
++    const size_t k = i / 3, j = i % 3;
++    if (ranuras[k]) {
++      if ((x ^ y) & ~kFh1FetchLayout[j]) {
++        return false;
++      }
++    } else if (cargado[3 * k] == kFh1AluNop[0] && cargado[3 * k + 1] == kFh1AluNop[1] &&
++               cargado[3 * k + 2] == kFh1AluNop[2]) {
++      // An export the pixel shader does not read, nulled out.
++    } else if (!(j == 0 && ((x >> 15) & 1) && !((x ^ y) & ~kFh1Exportacion))) {
++      return false;
++    }
++  }
++  return true;
++}
++#endif
++
+ constexpr const char* kUsos[] = {"posicion", "peso",     "indices",    "normal",
+                                  "tam_punto", "texcoord", "tangente",   "binormal",
+                                  "teselado",  "posicion_t", "color",    "niebla",
+@@ -124,6 +194,11 @@ const char* Leer(const nfsmw::native::Shader& shader, EntradaShader& e) {
+   for (size_t i = 0; i < e.microcodigo.size(); ++i) {
+     e.microcodigo[i] = c.U32(inicio_microcodigo + i * 4);
+   }
++#if defined(FH1_RECOMP)
++  if (e.vertices) {
++    e.fh1_original = e.microcodigo;  // before the fetches are masked (Fh1MismoVsEnlazado)
++  }
++#endif
+ 
+   if (e.vertices) {
+     // List at +0x28 (2008: +0x24), after skipping the words at +0x18; +0x1C = element count.
+@@ -598,7 +673,15 @@ const EntradaShader* ShadersNativos::Identificar(bool vertices,
+         std::sort(fetch_entrante.begin(), fetch_entrante.end());
+         std::sort(fetch_entrada.begin(), fetch_entrada.end());
+         if (!igual || fetch_entrante != fetch_entrada) {
++#if defined(FH1_RECOMP)
++          // FH1: relinked or nulled exports too, against the container's own microcode.
++          if (!vertices || !Fh1MismoVsEnlazado(e.fh1_original, microcodigo)) {
++            continue;
++          }
++          ++d.estadisticas.fh1_enlazados;
++#else
+           continue;
++#endif
+         }
+ #else
+         continue;
+diff --git a/forza-recomp/src/nativo/nfsmw_nativo_shaders.h b/forza-recomp/src/nativo/nfsmw_nativo_shaders.h
+index a64067f..615b1d5 100644
+--- a/forza-recomp/src/nativo/nfsmw_nativo_shaders.h
++++ b/forza-recomp/src/nativo/nfsmw_nativo_shaders.h
+@@ -80,6 +80,10 @@ struct EntradaShader {
+   // the dealership's AUTOSHOW ones), for fh2_mundo_multidao = 0.
+   bool fh2_multidao = false;
+ #endif
++#if defined(FH1_RECOMP)
++  // A vertex shader's microcode as in its container (e.microcodigo has its fetches masked).
++  std::vector<uint32_t> fh1_original;
++#endif
+ };
+ 
+ struct EstadisticasShaders {
+@@ -88,6 +92,7 @@ struct EstadisticasShaders {
+   uint64_t identificados = 0;    // of the distinct ones
+   uint64_t sin_identificar = 0;  // of the distinct ones
+   uint64_t ambiguos = 0;         // distinct ones with more than one possible container
++  uint64_t fh1_enlazados = 0;    // FH1: vertex shaders found with their exports relinked by D3D
+ };
+ 
+ class ShadersNativos {
+diff --git a/forza-recomp/src/nativo/nfsmw_nativo_sistema.cpp b/forza-recomp/src/nativo/nfsmw_nativo_sistema.cpp
+index 9070c74..e08216d 100644
+--- a/forza-recomp/src/nativo/nfsmw_nativo_sistema.cpp
++++ b/forza-recomp/src/nativo/nfsmw_nativo_sistema.cpp
+@@ -209,6 +209,9 @@ extern std::atomic<uint64_t> g_nfsmw_fotogramas_juego;
+ 
+ #if defined(FH2_RECOMP)
+ bool Fh2UmaFaixaAtiva();  // app/src/fh2_desempenho.cpp
++#if defined(FH1_RECOMP)
++std::string Fh1ResumenGanchos();  // fh1_nativo_ganchos.cpp
++#endif
+ 
+ // Kernel tid of the ring thread, 0 until it starts. Threads the ring creates (the Vulkan driver's own) inherit its
+ // name "GPU anillo nativo", so the Android core pinning (android/app/src/main/cpp/android_rendimiento.cpp) tells
+@@ -808,7 +811,10 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
+     // data, so it is not distributed). Without it the game still runs, without identification.
+     // Next to the executable (the app folder on Android) or, failing that, with the game files, where it
+     // is easier to copy on a phone.
+-#if defined(FH2_RECOMP)
++#if defined(FH1_RECOMP)
++    // Forza Horizon 1 (ReImagined): its own library, made from the player's game by the build.
++    constexpr const char* kNombreBiblioteca = "fh1_shaders.nfsp";
++#elif defined(FH2_RECOMP)
+     constexpr const char* kNombreBiblioteca = "fh2_shaders.nfsp";
+ #elif defined(NFSC_RECOMP)
+     constexpr const char* kNombreBiblioteca = "nfscarbon_shaders.nfsp";
+@@ -5156,6 +5162,10 @@ class SistemaGraficoNativo final : public rex::system::IGraphicsSystem {
+         Fh2EstadisticasParches(aciertos, fallos);
+         REXLOG_INFO("[fh2 nativo] VS por la direccion de su copia parcheada: {} identificados, {} no", aciertos, fallos);
+       }
++#endif
++#if defined(FH1_RECOMP)
++      REXLOG_INFO("[fh1 nativo] VS identificados con exportaciones reenlazadas por D3D: {}; ganchos: {}",
++                  e.fh1_enlazados, Fh1ResumenGanchos());
+ #endif
+       NFSMW_INFORME_SEGUN(diferir_informe, "[nativo] C5a: cargas={} distintos={} identificados={} sin_identificar={} "
+                   "ambiguos={}; dibujos con VS y PS={} sin VS={} sin PS={}; pares VS/PS={}",
+diff --git a/tools/cmake/linux-host-check/CMakeLists.txt b/tools/cmake/linux-host-check/CMakeLists.txt
+index 48a1d94..deafa2f 100644
+--- a/tools/cmake/linux-host-check/CMakeLists.txt
++++ b/tools/cmake/linux-host-check/CMakeLists.txt
+@@ -27,6 +27,12 @@ target_include_directories(forza_host_check PRIVATE
+ set_source_files_properties("${FORZA_ROOT}/forza-recomp/src/platform/vulkan_hooks.cpp"
+     "${FORZA_ROOT}/forza-recomp/src/platform/xr.cpp"
+     PROPERTIES INCLUDE_DIRECTORIES "${FORZA_ROOT}/forza-recomp/src/platform/wsi_stubs")
++# As in forza-recomp/CMakeLists.txt: the native renderer (src/nativo).
++set(_native_sources ${HOST_SOURCES})
++list(FILTER _native_sources INCLUDE REGEX "/forza-recomp/src/nativo/")
++set_source_files_properties(${_native_sources} PROPERTIES
++    COMPILE_DEFINITIONS "FH2_RECOMP=1;FH1_RECOMP=1"
++    INCLUDE_DIRECTORIES "${FORZA_ROOT}/forza-recomp/src/nativo;${FORZA_ROOT}/forza-recomp/src/platform/wsi_stubs")
+ target_link_libraries(forza_host_check PRIVATE rex::runtime)
+ if(TARGET rex::renderdoc)
+     target_link_libraries(forza_host_check PRIVATE rex::renderdoc)
+-- 
+2.43.0
+

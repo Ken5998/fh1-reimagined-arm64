@@ -4,5 +4,8 @@
   "version": "v0.3.7",
   "sdk_repository": "https://github.com/FH1-ReImagined/ReIGlue",
   "sdk_commit": "fa910f45df80c6f1947d7176c5b6230bcf7105e8",
+  "renderer_repository": "https://github.com/gabrick75/fh2-recompiled",
+  "renderer_commit": "6f88eeca7782fe8d894462e4f40156485fc9c350",
+  "renderer_version": "v0.4.5",
   "verified_utc": "2026-11-15T00:00:00Z"
 }
