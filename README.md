@@ -102,6 +102,11 @@ press **Update** in the launcher afterwards and the next build adds them.
 `forza.log` tells how it went (the lines with `[nativo]` and `[fh1 nativo]`),
 and `renderer.txt` beside it which renderer the last start chose and why.
 
+The library's shaders carry their constants built in, so ReImagined's fix for
+the sharp rectangle under the car in the speed blur is made to the library
+when it is built. For the same reason the game's motion blur setting doesn't
+reach the native renderer yet: the speed blur stays on.
+
 ## How it builds
 
 - `scripts/prepare.sh` checks out ReImagined at the commit in `upstream.json`

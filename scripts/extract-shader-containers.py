@@ -16,6 +16,13 @@ A container is a 2008-format shader blob (0x102A1100 pixel, 0x102A1101
 vertex): its virtual part followed by its physical part. They are written as
 p_NNNNNN.bin / v_NNNNNN.bin with procedencia.tsv saying where each came from.
 
+The speed blur's velocity shader gets ReImagined's fix for the sharp rectangle
+around the car (platform/motion_blur_fix.cpp): ReImagined changes its stencil
+threshold in the executable's image when the game starts, which the emulated
+GPU reads, but the library's shaders carry their literal constants built in
+(XenosRecomp writes them into the shader), so the same change is made here.
+FORZA_BLUR_THRESHOLD=0 leaves it alone, as it does for ReImagined.
+
     extract-shader-containers.py OUT LZX_XMEM REIMAGINED_TOOLS SOURCE... [--xex XEX...]
 
 OUT               a new folder
@@ -32,6 +39,32 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+
+
+# The velocity pass's literal constants c252-c255, big-endian, as ReImagined's
+# platform/motion_blur_fix.cpp looks for them. c253.w (0x3F008100, 128.0019 / 255)
+# is the stencil threshold: just above 128 / 255, so the stencil-128 ground
+# rectangle around the player's car counts as an object with an identity matrix
+# and stays sharp while everything around it blurs. 0.5 puts 128 on the world side.
+BLUR_LITERALS = struct.pack(
+    ">16I",
+    0xBF800000, 0x40A00000, 0x3EFEFEFF, 0x00000000,  # c252, .y = blur scale (5.0)
+    0x35800000, 0x42AA0000, 0x40800000, 0x3F008100,  # c253, .w = the threshold
+    0x3F800000, 0x3F000000, 0xC1700000, 0x417F0000,  # c254
+    0x437F0000, 0x477F0000, 0x49800000, 0x3DCCCCCD)  # c255
+BLUR_THRESHOLD_AT = 7 * 4
+BLUR_THRESHOLD_FIXED = struct.pack(">I", 0x3F000000)  # 0.5
+
+
+def fix_blur_threshold(blob):
+    """(blob, True) with the speed blur's stencil threshold at 0.5 if blob is
+    its velocity shader, else (blob, False)."""
+    i = blob.find(BLUR_LITERALS)
+    if i < 0:
+        return blob, False
+    fixed = bytearray(blob)
+    fixed[i + BLUR_THRESHOLD_AT:i + BLUR_THRESHOLD_AT + 4] = BLUR_THRESHOLD_FIXED
+    return bytes(fixed), True
 
 
 def containers(data):
@@ -146,13 +179,17 @@ def main():
     lzx = Lzx(tool)
     seen = set()
     count = {"p": 0, "v": 0}
-    files = archives = dup = images = 0
+    files = archives = dup = images = blur = 0
+    fix_blur = os.environ.get("FORZA_BLUR_THRESHOLD") != "0"
     idx = open(os.path.join(out, "procedencia.tsv"), "w")
     idx.write("archivo\torigen\tdesplazamiento\tvirtual\tfisico\n")
 
     def take(origin, data):
-        nonlocal dup
+        nonlocal dup, blur
         for off, kind, blob in containers(data):
+            if fix_blur and kind == "p":
+                blob, fixed = fix_blur_threshold(blob)
+                blur += fixed
             h = hashlib.sha1(blob).digest()
             if h in seen:
                 dup += 1
@@ -205,6 +242,12 @@ def main():
                              ", %d archive entries not decompressed" % lzx.failed if lzx.failed else ""))
     if not count["p"] and not count["v"]:
         sys.exit("error: no shader container found")
+    if not fix_blur:
+        print("speed blur: stencil threshold left as is (FORZA_BLUR_THRESHOLD=0)")
+    elif blur:
+        print("speed blur: stencil threshold set to 0.5 in %d velocity shader(s), as ReImagined does" % blur)
+    else:
+        print("warning: speed blur velocity shader not found; the rectangle around the car stays sharp")
 
 
 if __name__ == "__main__":
