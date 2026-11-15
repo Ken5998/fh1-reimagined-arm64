@@ -23,8 +23,8 @@ build="$game/out/host-check-$tu"
 cmake -S "$game/tools/cmake/linux-host-check" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
     "-DCMAKE_TOOLCHAIN_FILE=$repo/cmake/toolchains/linux-arm64.cmake" \
     "-DCMAKE_C_COMPILER=$llvm/clang" "-DCMAKE_CXX_COMPILER=$llvm/clang++" \
-    "-DCMAKE_C_FLAGS=$FS_ARCH_FLAGS" "-DCMAKE_CXX_FLAGS=$FS_ARCH_FLAGS" \
-    "-DCMAKE_PREFIX_PATH=$sdk" "-Drexglue_DIR=$sdk/lib/cmake/rexglue" \
+    "-DCMAKE_CXX_FLAGS=$FS_ARCH_FLAGS" \
+    "-DCMAKE_PREFIX_PATH=$sdk" "-DCMAKE_FIND_ROOT_PATH=$sdk" "-Drexglue_DIR=$sdk/lib/cmake/rexglue" \
     "-DFORZA_TITLE_UPDATE=$tu" -DFORZA_NATIVE_PAUSE=ON
 cmake --build "$build" --target forza_host_check --parallel "$(build_jobs)"
 echo "OK: every host source compiles for linux-arm64 (FORZA_TITLE_UPDATE=$tu)"

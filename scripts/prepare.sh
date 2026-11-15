@@ -68,7 +68,8 @@ apply() {  # apply TREE PATCH...: git apply each patch onto TREE
     for patch in "$@"; do
         [ -e "$patch" ] || continue
         git -C "$tree" apply --whitespace=nowarn "$patch"
-        echo "Applied ${patch#"$work"/}"
+        patch="${patch#"$work"/}"
+        echo "Applied ${patch#"$repo"/}"
     done
 }
 # What tools/build_rexglue_sdk.sh does to ReIGlue's SDL and FFmpeg.
