@@ -16,6 +16,7 @@ enum Task {
     Build,
     Steam,
     Preemption,
+    Dlc,
 }
 
 pub struct LauncherApp {
@@ -35,6 +36,8 @@ pub struct LauncherApp {
     show_log: bool,
     error: Option<String>,
     preemption: Preemption,
+    dlc: Vec<String>,
+    dlc_source: Option<PathBuf>,
 }
 
 impl LauncherApp {
@@ -52,6 +55,7 @@ impl LauncherApp {
         }
         let (tx, rx) = channel();
         let free = tasks::free_space(&paths.data);
+        let paths_for_dlc = paths.clone();
         Self {
             paths,
             settings,
@@ -69,6 +73,8 @@ impl LauncherApp {
             show_log: false,
             error: None,
             preemption: tasks::preemption(),
+            dlc: tasks::installed_dlc(&paths_for_dlc),
+            dlc_source: None,
         }
     }
 
@@ -114,6 +120,7 @@ impl LauncherApp {
             Task::Build => "Getting the latest scripts and patches".into(),
             Task::Steam => "Adding Forza Horizon ReImagined to Steam".into(),
             Task::Preemption => "Turning GPU preemption off (asks for your password)".into(),
+            Task::Dlc => "Installing DLC".into(),
         };
         self.progress = None;
         self.running = Some(task);
@@ -125,6 +132,10 @@ impl LauncherApp {
             Task::Build => self.runner.spawn(log, move |r| tasks::build(r, &paths, iso, tu, add_to_steam)),
             Task::Steam => self.runner.spawn(log, move |r| tasks::add_to_steam(r, &paths)),
             Task::Preemption => self.runner.spawn(log, tasks::turn_off_preemption),
+            Task::Dlc => {
+                let source = self.dlc_source.take().unwrap_or_default();
+                self.runner.spawn(log, move |r| tasks::install_dlc(r, &paths, &source))
+            }
         }
     }
 
@@ -153,6 +164,7 @@ impl LauncherApp {
                     self.result = Some(result);
                     self.free = tasks::free_space(&self.paths.data);
                     self.preemption = tasks::preemption();
+                    self.dlc = tasks::installed_dlc(&self.paths);
                 }
             }
         }
@@ -310,6 +322,54 @@ impl LauncherApp {
         }
     }
 
+    /// The installed DLC and the buttons that add more: Microsoft's packs
+    /// and community ones such as the UDLC Pack.
+    fn dlc_row(&mut self, ui: &mut egui::Ui) {
+        let ready = self.paths.sources();
+        ui.horizontal_wrapped(|ui| {
+            // The names when they fit, else how many (all of them on hover).
+            let names = self.dlc.join(", ");
+            let count = match self.dlc.len() {
+                0 => "DLC: none installed".to_string(),
+                _ if names.chars().count() <= 60 => format!("DLC: {names}"),
+                n => format!("DLC: {n} packages installed"),
+            };
+            let label = ui.label(count);
+            if !self.dlc.is_empty() {
+                label.on_hover_text(self.dlc.join("\n"));
+            }
+            let downloads = tasks::home().join("Downloads");
+            let file = ui
+                .add_enabled(ready, egui::Button::new("Add DLC file..."))
+                .on_hover_text("A .zip as downloaded (the UDLC Pack from ModDB, for instance) or a DLC package")
+                .on_disabled_hover_text("Build the game first");
+            if file.clicked() {
+                let mut dialog = rfd::FileDialog::new().set_title("Select a DLC .zip or package");
+                if downloads.is_dir() {
+                    dialog = dialog.set_directory(&downloads);
+                }
+                if let Some(p) = dialog.pick_file() {
+                    self.dlc_source = Some(p);
+                    self.start(Task::Dlc);
+                }
+            }
+            let folder = ui
+                .add_enabled(ready, egui::Button::new("Add DLC folder..."))
+                .on_hover_text("A folder of DLC packages or zips, or a Xenia content folder")
+                .on_disabled_hover_text("Build the game first");
+            if folder.clicked() {
+                let mut dialog = rfd::FileDialog::new().set_title("Select a folder with DLC");
+                if downloads.is_dir() {
+                    dialog = dialog.set_directory(&downloads);
+                }
+                if let Some(p) = dialog.pick_folder() {
+                    self.dlc_source = Some(p);
+                    self.start(Task::Dlc);
+                }
+            }
+        });
+    }
+
     fn buttons(&mut self, ui: &mut egui::Ui) {
         let built = self.paths.built();
         ui.horizontal(|ui| {
@@ -417,6 +477,8 @@ impl eframe::App for LauncherApp {
                 self.disc_picker(ui);
                 ui.add_space(6.0);
                 self.update_picker(ui);
+                ui.add_space(6.0);
+                self.dlc_row(ui);
                 ui.add_space(6.0);
                 if let Some(free) = self.free {
                     let text = format!(

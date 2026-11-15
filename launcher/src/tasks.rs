@@ -60,6 +60,15 @@ impl Paths {
     pub fn update_applied(&self) -> bool {
         self.data.join("files/tu4/default.xex").is_file()
     }
+    /// Whether the build checked out ReImagined, whose DLC installer
+    /// scripts/install-dlc.py uses.
+    pub fn sources(&self) -> bool {
+        self.data.join("source/reimagined/tools/install_dlc.py").is_file()
+    }
+    /// Where the game finds DLC (the content folder under its user data).
+    pub fn dlc(&self) -> PathBuf {
+        self.data.join("user/0000000000000000/4D5309C9")
+    }
     pub fn built(&self) -> bool {
         self.game().is_file()
     }
@@ -364,6 +373,56 @@ pub fn build(r: &Runner, paths: &Paths, iso: Option<PathBuf>, tu: Option<PathBuf
     })
 }
 
+/// The names of the installed DLC packages, from their headers.
+pub fn installed_dlc(paths: &Paths) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(paths.dlc().join("00000002")) else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.path().is_dir() && !e.file_name().to_string_lossy().ends_with(".part"))
+        .map(|e| {
+            let package = e.file_name().to_string_lossy().into_owned();
+            let header = paths.dlc().join("Headers/00000002").join(format!("{package}.header"));
+            fs::read(header)
+                .ok()
+                .and_then(|data| header_name(&data))
+                .unwrap_or(package)
+        })
+        .collect();
+    names.sort();
+    names
+}
+
+/// The display name in a content header (UTF-16BE at offset 8).
+fn header_name(data: &[u8]) -> Option<String> {
+    let units: Vec<u16> = data
+        .get(8..264)?
+        .chunks_exact(2)
+        .map(|c| u16::from_be_bytes([c[0], c[1]]))
+        .take_while(|&u| u != 0)
+        .collect();
+    let name = String::from_utf16_lossy(&units).trim().to_string();
+    (!name.is_empty()).then_some(name)
+}
+
+/// Installs DLC (a .zip as downloaded, a package or a folder of them) with
+/// scripts/install-dlc.py.
+pub fn install_dlc(r: &Runner, paths: &Paths, source: &Path) -> Result<String, String> {
+    if !paths.overlay().join("scripts/install-dlc.py").is_file() {
+        update_overlay(r, paths)?;
+    }
+    r.run(
+        Command::new("python3")
+            .arg("-I")
+            .arg(paths.overlay().join("scripts/install-dlc.py"))
+            .arg("--dir")
+            .arg(&paths.data)
+            .arg(source),
+    )?;
+    Ok("DLC installed: the game has it the next time it starts.".into())
+}
+
 pub fn add_to_steam(r: &Runner, paths: &Paths) -> Result<String, String> {
     if !paths.overlay().join("scripts/add-to-steam.py").is_file() {
         update_overlay(r, paths)?;
@@ -442,7 +501,18 @@ pub fn turn_off_preemption(r: &Runner) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{PREEMPTION_OFF, has_argument};
+    use super::{PREEMPTION_OFF, has_argument, header_name};
+
+    #[test]
+    fn reads_the_dlc_name_from_its_header() {
+        let mut header = vec![0u8; 0x14C];
+        for (i, unit) in "UDLC Pack V1.2".encode_utf16().enumerate() {
+            header[8 + 2 * i..10 + 2 * i].copy_from_slice(&unit.to_be_bytes());
+        }
+        assert_eq!(header_name(&header).as_deref(), Some("UDLC Pack V1.2"));
+        assert_eq!(header_name(&[0u8; 0x14C]), None);
+        assert_eq!(header_name(&[0u8; 16]), None);
+    }
 
     #[test]
     fn finds_the_kernel_option() {

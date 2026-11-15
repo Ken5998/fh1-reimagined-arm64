@@ -7,7 +7,7 @@ as the Retroid Pocket 6.
 
 <p align="center">
   <img src="docs/launcher-setup.png" alt="The launcher before the first build: it found the Forza Horizon disc image and Title Update 4 and offers Build" width="49%">
-  <img src="docs/launcher-ready.png" alt="The launcher after the build: Update, Play and Add to Steam" width="49%">
+  <img src="docs/launcher-ready.png" alt="The launcher after the build: the UDLC Pack installed, Update, Play and Add to Steam" width="49%">
 </p>
 
 Upstream ships a Windows installer and x86-64 Linux packages, and its ARM64
@@ -42,6 +42,26 @@ ReImagined reads the game from a folder, so the build extracts the disc once
 (about 8 GB, in `~/.local/share/FH1ReImagined-arm64/files`) and applies the
 update next to it; after that the ISO isn't needed. **Update** in the
 launcher pulls this repository's fixes and rebuilds only what they touch.
+
+## DLC
+
+**Add DLC file** and **Add DLC folder** in the launcher install DLC where the
+game finds it, once the game is built: your own Microsoft car packs (the
+packages, a zip of them or a Xenia content folder) and community packs such as
+the [UDLC Pack](https://www.moddb.com/mods/forza-horizon-udlc-pack/downloads/udlcv12)
+(the Forza Horizon 2 and Fast & Furious cars) and its
+[Traffic Car Unlocker](https://www.moddb.com/mods/forza-horizon-udlc-pack/downloads/udlc-traffic-car-unlocker).
+Pick the zip as downloaded. Close the game first; it has the new cars the next
+time it starts. The same from a terminal:
+
+    python3 ~/.local/share/FH1ReImagined-arm64/overlay/scripts/install-dlc.py ~/Downloads/UDLCv1.2.zip
+
+It uses ReImagined's own installer, which unlocks every package. Pinyon
+Shift's players
+found that painting the 2015 Dodge Charger F&F or the 2014 Maserati Ghibli F&F
+from the UDLC Pack hangs the paint shop. Keep a copy of
+`~/.local/share/FH1ReImagined-arm64/user` before removing a pack: a save can
+own cars that are gone.
 
 ## Settings
 

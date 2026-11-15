@@ -42,6 +42,8 @@ jobs:
           - The disc is extracted once (about 8 GB) because ReImagined reads the game from a folder. The update is applied next to it. After that the ISO isn't needed.
           - The SDK and the recompiled game are compiled on the handheld, which takes a couple of hours: keep it on the charger. When it's done, "Forza Horizon ReImagined" appears in Steam without artwork (pick yours on SteamGridDB).
 
+          DLC: once the game is built, Add DLC file and Add DLC folder install your car packs and community ones such as the UDLC Pack (pick the zip as downloaded from ModDB).
+
           This first stage runs ReImagined's emulated Xbox 360 GPU, so expect low frame rates. The settings are in game/forza.toml: 30 fps, the 3D scene at 540p, no MSAA and FSR 1. To play online on ReImagined's public server, uncomment live_server there.
 
           Launcher SHA-256: \`$sha256\`. No game files are included.

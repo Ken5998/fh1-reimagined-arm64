@@ -53,6 +53,19 @@ jobs:
           game="$RUNNER_TEMP/work/reimagined"
           python3 -I "$game/tools/xiso_extract.py" 2>&1 | grep -q "xiso_extract.py ISO extract"
           python3 -I "$game/tools/apply_title_update.py" 2>&1 | grep -q "BASE_XEX TITLE_UPDATE OUT_XEX"
+      - name: Install DLC from a zip as downloaded
+        run: |
+          # A Xenia-style extracted package in a zip, like community packs ship.
+          dir="$RUNNER_TEMP/dlc-dir" pkg=21D846F4D0EB47F4C4EB6892992F83429BBAD7D5
+          mkdir -p "$dir/source/reimagined" "$RUNNER_TEMP/dlc/Pack/4D5309C9/00000002/$pkg/media"
+          ln -s "$RUNNER_TEMP/work/reimagined/tools" "$dir/source/reimagined/tools"
+          echo car > "$RUNNER_TEMP/dlc/Pack/4D5309C9/00000002/$pkg/media/car.zip"
+          (cd "$RUNNER_TEMP/dlc" && python3 -m zipfile -c pack.zip Pack)
+          python3 -I scripts/install-dlc.py --dir "$dir" "$RUNNER_TEMP/dlc/pack.zip"
+          test -f "$dir/user/0000000000000000/4D5309C9/00000002/$pkg/media/car.zip"
+          test -s "$dir/user/0000000000000000/4D5309C9/Headers/00000002/$pkg.header"
+          python3 -I scripts/install-dlc.py --dir "$dir" --list | grep -q "1 DLC package installed"
+          if python3 -I scripts/install-dlc.py --dir "$dir" README.md; then exit 1; fi
       - name: Check the start script, the settings and Add to Steam
         run: |
           bash -n config/forza.sh && bash -n scripts/build.sh
