@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Starts Forza Horizon 1: ReImagined (linux-arm64). Installed beside the game
+# as forza.sh by scripts/build.sh; Steam starts this.
+#
+# The game files are the ones build.sh extracted from your disc image
+# (../files/game) and, with Title Update 4, the update it applied
+# (../files/tu4). Settings are in forza.toml beside this script; arguments
+# given to this script are passed on to the game and win over forza.toml.
+set -euo pipefail
+here="$(cd "$(dirname "$0")" && pwd)"
+cd "$here"
+data="$(cd "$here/.." && pwd)"
+mkdir -p "$data/user"
+
+game_files="$data/files/game"
+[ -f "$game_files/default.xex" ] ||
+    { echo "error: no game files in $game_files: run the launcher's Build again" >&2; exit 1; }
+update=()
+if [ -f "$here/.title-update-4" ]; then
+    [ -f "$data/files/tu4/default.xex" ] ||
+        { echo "error: Title Update 4 is missing from $data/files/tu4: run the launcher's Build again" >&2; exit 1; }
+    update=(--update_data_root="$data/files/tu4")
+fi
+
+# One session per log, like ReImagined's launcher: the last one stays as
+# forza.previous.log.
+log="$data/user/forza.log"
+[ ! -f "$log" ] || mv -f "$log" "$data/user/forza.previous.log"
+
+export LD_LIBRARY_PATH="$here${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec "$here/forza" --game_data_root="$game_files" "${update[@]}" \
+    --user_data_root="$data/user" --log_file="$log" \
+    "$@"

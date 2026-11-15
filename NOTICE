@@ -1,7 +1,9 @@
 fh1-reimagined-arm64 builds Forza Horizon 1: ReImagined
 (https://github.com/FH1-ReImagined/ForzaHorizon1-ReImagined, GPL-3.0-or-later with the
-additional permission in its NOTICE.md) and its SDK ReIGlue for linux-arm64. The patches
-in this repository modify those projects and are released under the same licenses.
+additional permission in its NOTICE.md) and its SDK ReIGlue
+(https://github.com/FH1-ReImagined/ReIGlue, BSD-3-Clause) for linux-arm64. The patches in
+this repository modify those projects and are released under the same licenses: patches/game
+under GPL-3.0-or-later, patches/sdk under BSD-3-Clause.
 
 Forza, Forza Horizon and Xbox 360 are trademarks of the Microsoft group of companies.
 This project is not affiliated with or endorsed by Microsoft, Playground Games or

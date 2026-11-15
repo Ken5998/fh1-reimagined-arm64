@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/FH1-ReImagined/ForzaHorizon1-ReImagined",
+  "commit": "98529c0309c1b6163b56a194e45b34e0776e32df",
+  "version": "v0.3.7",
+  "sdk_repository": "https://github.com/FH1-ReImagined/ReIGlue",
+  "sdk_commit": "fa910f45df80c6f1947d7176c5b6230bcf7105e8",
+  "verified_utc": "2026-11-15T00:00:00Z"
+}

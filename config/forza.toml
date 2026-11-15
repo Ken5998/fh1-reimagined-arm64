@@ -1,0 +1,17 @@
+# Forza Horizon 1: ReImagined settings for the Retroid Pocket 6 (ArmadaOS).
+# build.sh copies this file only the first time; your changes stay.
+# Every key is a ReImagined setting (its launcher's Settings pages write the
+# same keys); a key left out keeps the game's default.
+
+# The game's own 30 fps (Display > Frame rate). 60 needs a PC-class GPU.
+frame_rate = 30
+# The 3D scene at 960x540 and scaled up: about half the GPU work of 720p.
+scene_resolution = "540"
+# Scene anti-aliasing off: the cheapest choice on a handheld GPU.
+scene_msaa = "off"
+# AMD FSR 1 scales the picture to the screen (sharper than bilinear).
+present_effect = "fsr"
+
+# Online play on ReImagined's public Forza Live server: remove the # below.
+# Without it the game plays offline.
+# live_server = "forza-reimagined.playit.plus:56677"

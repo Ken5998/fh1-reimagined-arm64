@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Kenan=20Kasumovi=C4=87?=
+ <46025606+Ken5998@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 12:33:18 +0000
+Subject: [PATCH 4/4] fix(linux): bind ffmpeg's arm64 assembly locally in
+ shared objects
+
+The visibility preset does not reach FFmpeg's .S files, so lld links a
+conditional branch to one of their functions through a PLT entry out of
+its range when it builds librexruntime.so for aarch64.
+---
+ thirdparty/CMakeLists.txt | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/thirdparty/CMakeLists.txt b/thirdparty/CMakeLists.txt
+index 2b64080..d2bb125 100644
+--- a/thirdparty/CMakeLists.txt
++++ b/thirdparty/CMakeLists.txt
+@@ -702,3 +702,11 @@ set_target_properties(libavutil libavcodec PROPERTIES
+     C_VISIBILITY_PRESET hidden
+     VISIBILITY_INLINES_HIDDEN ON
+     FOLDER "FFmpeg")
++# The visibility preset does not reach the .S files, so their exported
++# functions stay preemptible in a shared object and a conditional branch to
++# one (ff_prefetch_aarch64 branches to itself) goes through a far PLT entry
++# that lld cannot reach ("R_AARCH64_CONDBR19 out of range" on Linux). Hiding
++# every symbol of the two archives in whatever links them binds them locally.
++if(IS_ARM64 AND UNIX AND NOT APPLE)
++    target_link_options(libavcodec INTERFACE "LINKER:--exclude-libs,liblibavcodec.a:liblibavutil.a")
++endif()
