@@ -28,5 +28,10 @@
     "version": "2026.11.10.1",
     "url": "https://github.com/Ken5998/skate3-recomp-arm64/releases/download/sysroot-2026.11.10.1/skate3-arm64-sysroot-2026.11.10.1.tar.xz",
     "sha256": "0528B1BC9F5D1F00E1D2637DBDBDC98B0431DD2F380510B10BAF7F59576FF26A"
+  },
+  "shader_tools": {
+    "version": "1.9.2607.1",
+    "url": "https://github.com/Ken5998/fh2-recompiled-arm64/releases/download/shader-tools-1.9.2607.1/fh2-shader-tools-1.9.2607.1-linux-arm64.tar.xz",
+    "sha256": "9EF71FCB9D7372DEB7BA7972C65C624A17CE8C5BD11C4C9A6A4BD79A5F0239FB"
   }
 }

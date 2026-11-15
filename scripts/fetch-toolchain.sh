@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Downloads the pinned toolchain into DEST: LLVM 20.1.8 for this machine
 # (aarch64 or x86-64), the Ubuntu 24.04 arm64 sysroot with GTK 3 that
-# skate3-recomp-arm64 publishes and, on aarch64, CMake and Ninja (ArmadaOS has neither; x86-64
-# build machines use their own), all checked against toolchain.json. DEST is
+# skate3-recomp-arm64 publishes and, on aarch64, CMake and Ninja (ArmadaOS has
+# neither; x86-64 build machines use their own) and the native renderer's
+# shader tools (DXC, SPIR-V Tools), all checked against toolchain.json. DEST is
 # what cmake/toolchains/linux-arm64.cmake expects in FS_ARM64_TOOLCHAIN;
 # DEST/bin goes first in PATH.
 #
@@ -68,6 +69,9 @@ if [ "$arch" = aarch64 ]; then
     chmod +x "$dest/ninja/ninja"
     for tool in cmake ctest cpack; do ln -sfn "../cmake/bin/$tool" "$dest/bin/$tool"; done
     ln -sfn ../ninja/ninja "$dest/bin/ninja"
+    # DXC and SPIR-V Tools for the native renderer's shader library
+    # (scripts/build-shaders.sh): the linux-arm64 build fh2-recompiled-arm64 publishes.
+    fetch "$(field shader_tools url)" "$(field shader_tools sha256)" shader-tools --strip-components=1
 fi
 
 # The LLVM release's ld.lld needs libxml2.so.2, which current distributions

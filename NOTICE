@@ -5,6 +5,13 @@ additional permission in its NOTICE.md) and its SDK ReIGlue
 this repository modify those projects and are released under the same licenses: patches/game
 under GPL-3.0-or-later, patches/sdk under BSD-3-Clause.
 
+The build also copies the native renderer and the shader tools of FH2 Recompiled
+(https://github.com/gabrick75/fh2-recompiled, GPL-3.0; the renderer comes from
+codepdbh/nfsmw-android and StevensND/nfsmw-nx, GPL-3.0, and the shader translator from
+hedge-dev/XenosRecomp, MIT) into the game; patches/game adapts them to Forza Horizon
+under GPL-3.0. scripts/fetch-toolchain.sh downloads DXC and SPIR-V Tools (Apache-2.0
+with LLVM exceptions, and Apache-2.0) as built by fh2-recompiled-arm64.
+
 Forza, Forza Horizon and Xbox 360 are trademarks of the Microsoft group of companies.
 This project is not affiliated with or endorsed by Microsoft, Playground Games or
 Turn 10 Studios. No game content is included.

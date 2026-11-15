@@ -2,9 +2,10 @@
 # Builds Forza Horizon 1: ReImagined for linux-arm64 from your own Forza
 # Horizon (Xbox 360) disc image and, optionally, its Title Update 4, start to
 # finish: the toolchain, ReImagined and ReIGlue with this repository's
-# patches, the SDK, the recompiled code, the game, and a ready folder to play
-# from, added to Steam. Made for the handheld itself (ArmadaOS on the Retroid
-# Pocket 6, or any aarch64 Linux). FS_ADD_TO_STEAM=0 leaves Steam alone.
+# patches, the SDK, the recompiled code, the game, the native renderer's
+# shader library, and a ready folder to play from, added to Steam. Made for
+# the handheld itself (ArmadaOS on the Retroid Pocket 6, or any aarch64
+# Linux). FS_ADD_TO_STEAM=0 leaves Steam alone.
 #
 #   scripts/build.sh ISO TU [DIR]
 #
@@ -149,6 +150,29 @@ fi
 step "Building Forza Horizon 1: ReImagined (an hour or more on a handheld)"
 "$repo/scripts/build-game.sh" "$game" "$tc" "$sdk" "$tu"
 
+# The native renderer's shader library (FH2 Recompiled's renderer, opt-in
+# with FH1_RENDERER=native: see config/forza.sh), made from your game files,
+# its update and DLC. Without it the game draws on the emulated GPU as always,
+# so a failure here only warns. forza.sh has the game write the shaders the
+# library lacks to DIR/shader-dump; a new dump makes the library again with
+# them.
+dump="$dir/shader-dump"
+dump_list="$(ls "$dump" 2>/dev/null | grep '\.bin$' || true)"
+dlc_dir="$dir/user/0000000000000000/4D5309C9"
+dlc_key=none
+[ ! -d "$dlc_dir" ] || dlc_key="$(dirkey "$dlc_dir")"
+shaders_key="$prepare_key $tu $iso_key ${tu_key:-} $dlc_key $(key "$repo/toolchain.json" "$repo/scripts/build-shaders.sh" "$repo/scripts/extract-shader-containers.py" "$repo/scripts/common.sh") $(printf '%s' "$dump_list" | sha256sum | cut -d' ' -f1)"
+if done_with shaders "$shaders_key" && [ -f "$dir/fh1_shaders.nfsp" ]; then
+    echo "Shader library already made - skipping."
+else
+    step "Making the shader library for the native renderer (experimental)"
+    if "$repo/scripts/build-shaders.sh" "$work" "$tc" "$dir" "$tu" "$dir/fh1_shaders.nfsp"; then
+        mark shaders "$shaders_key"
+    else
+        echo "Warning: the shader library could not be made; the game keeps the emulated GPU."
+    fi
+fi
+
 step "Copying the game to $out"
 build="$game/forza-recomp/out/build/linux-arm64"
 [ "$tu" = 0 ] || build="$build-tu4"
@@ -164,6 +188,9 @@ done
 [ ! -d "$build/licenses" ] || cp -rf "$build/licenses" "$out/"
 cp -f "$repo/LICENSE" "$repo/NOTICE" "$out/"
 if [ "$tu" = 4 ]; then touch "$out/.title-update-4"; else rm -f "$out/.title-update-4"; fi
+if [ -f "$dir/fh1_shaders.nfsp" ]; then
+    cp -f "$dir/fh1_shaders.nfsp" "$out/.fh1_shaders.nfsp.new" && mv -f "$out/.fh1_shaders.nfsp.new" "$out/fh1_shaders.nfsp"
+fi
 install -m 755 "$repo/config/forza.sh" "$out/forza.sh"
 # Your settings stay; the RP6 defaults go in only the first time.
 [ -f "$out/forza.toml" ] || cp "$repo/config/forza.toml" "$out/forza.toml"

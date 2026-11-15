@@ -15,10 +15,12 @@ Linux build has never been played. This repository makes it a native
 linux-arm64 game compiled on the handheld itself, started from Steam, with no
 emulation of the CPU.
 
-> **Work in progress.** Stage 1 (now): ReImagined as upstream draws it, on its
-> emulated Xbox 360 GPU, which is slow on a handheld. Stage 2: the native
-> Vulkan renderer that [fh2-recompiled-arm64](https://github.com/Ken5998/fh2-recompiled-arm64)
-> uses for Forza Horizon 2 (30 fps on the RP6), adapted to Forza Horizon.
+> **Work in progress.** By default the game draws as upstream does, on its
+> emulated Xbox 360 GPU, which is slow on a handheld (22-30 fps on the RP6).
+> The native Vulkan renderer that [fh2-recompiled-arm64](https://github.com/Ken5998/fh2-recompiled-arm64)
+> uses for Forza Horizon 2 (30 fps on the RP6) is now built in too, adapted
+> to Forza Horizon: it is experimental and off unless you turn it on (see
+> [Native renderer](#native-renderer-experimental)).
 
 ## Install
 
@@ -81,18 +83,39 @@ Saves and the log (`forza.log`) are in
 If MangoHud or the Steam overlay flicker, the launcher can turn GPU
 preemption off (kernel option `msm.enable_preemption=0`, then restart).
 
+## Native renderer (experimental)
+
+FH2 Recompiled's native renderer reads the game's GPU commands and draws them
+with Vulkan, with the game's shaders translated ahead of time, instead of
+emulating the Xbox 360 GPU. Forza Horizon 2 runs on the same engine, so it is
+built into this game too, off by default. Each build also makes its shader
+library from your game files, title update and DLC
+(`~/.local/share/FH1ReImagined-arm64/game/fh1_shaders.nfsp`).
+
+To try it, set the game's launch options in Steam (Properties > Shortcut) to
+
+    FH1_RENDERER=native %command%
+
+and remove them to go back to the emulated GPU. While you play, the shaders
+the library lacks are written to `~/.local/share/FH1ReImagined-arm64/shader-dump`;
+press **Update** in the launcher afterwards and the next build adds them.
+`forza.log` tells how it went (the lines with `[nativo]` and `[fh1 nativo]`).
+
 ## How it builds
 
 - `scripts/prepare.sh` checks out ReImagined at the commit in `upstream.json`
   and ReIGlue, its fork of the ReXGlue SDK, at the commit ReImagined pins,
-  with ReIGlue's SDL and FFmpeg patches, then applies `patches/game` and
-  `patches/sdk`.
+  with ReIGlue's SDL and FFmpeg patches, and FH2 Recompiled's native
+  renderer (`app/src/nativo`, copied into the game, and its shader tools),
+  then applies `patches/game` and `patches/sdk`.
 - `scripts/build.sh ISO TU` does the rest on the handheld: the pinned LLVM
   toolchain and sysroot (`toolchain.json`), the disc extraction and the title
   update (upstream's `tools/xiso_extract.py` and `tools/apply_title_update.py`),
   the SDK (`scripts/build-sdk.sh`), the code generation from your
   executables, the game (`scripts/build-game.sh`, ARMv8.2, tuned for the
-  RP6), `game/forza.sh` and the Steam shortcut.
+  RP6), the native renderer's shader library (`scripts/build-shaders.sh`:
+  the shaders of your game files translated with FH2 Recompiled's XenosRecomp
+  and compiled with DXC), `game/forza.sh` and the Steam shortcut.
 - CI builds the SDK natively on an ARM64 runner in Fedora 44 and
   cross-compiled on x86-64, and compiles every ReImagined host source against
   it (`scripts/check-host.sh`). The recompiled code is never built there: no
@@ -107,5 +130,5 @@ of companies; this project is not affiliated with or endorsed by them.
 
 ## License
 
-GPL-3.0, like ReImagined; the patches to ReIGlue are BSD-3-Clause like
-ReIGlue. See [NOTICE](NOTICE).
+GPL-3.0, like ReImagined and FH2 Recompiled; the patches to ReIGlue are
+BSD-3-Clause like ReIGlue. See [NOTICE](NOTICE).

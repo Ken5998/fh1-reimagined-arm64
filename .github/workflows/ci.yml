@@ -2,9 +2,10 @@ name: ARM64 build
 
 # Builds ReIGlue (the SDK Forza Horizon 1: ReImagined pins, plus
 # patches/sdk) for linux-arm64 and compiles every ReImagined host source
-# (plus patches/game) against it, two ways: natively on GitHub's ARM64 runner
-# in a bare Fedora 44 (the release ArmadaOS is built on) with only the pinned
-# toolchain, as the handheld does, and cross-compiled on x86-64 Ubuntu.
+# (plus patches/game, which builds FH2 Recompiled's native renderer in)
+# against it, two ways: natively on GitHub's ARM64 runner in a bare Fedora 44
+# (the release ArmadaOS is built on) with only the pinned toolchain, as the
+# handheld does, and cross-compiled on x86-64 Ubuntu.
 #
 # No game files are involved, so the recompiled code (made from the player's
 # disc on the handheld) is not built here: the host sources are compiled
@@ -42,6 +43,8 @@ jobs:
         env:
           REF: ${{ inputs.ref }}
         run: scripts/prepare.sh "$RUNNER_TEMP/work" ${REF:+"$REF"}
+      - name: Check the native renderer's shader library tools
+        run: FH1_SHADERS_CHECK=1 scripts/build-shaders.sh "$RUNNER_TEMP/work" "$RUNNER_TEMP/toolchain" - - -
       - name: Build and install the SDK
         run: |
           scripts/build-sdk.sh "$RUNNER_TEMP/work/reiglue" "$RUNNER_TEMP/toolchain" "$RUNNER_TEMP/sdk"
@@ -68,7 +71,7 @@ jobs:
           if python3 -I scripts/install-dlc.py --dir "$dir" README.md; then exit 1; fi
       - name: Check the start script, the settings and Add to Steam
         run: |
-          bash -n config/forza.sh && bash -n scripts/build.sh
+          bash -n config/forza.sh && bash -n scripts/build.sh && bash -n scripts/build-shaders.sh
           python3 -c 'import tomllib; tomllib.load(open("config/forza.toml", "rb"))'
           mkdir -p "$RUNNER_TEMP/game" "$RUNNER_TEMP/home/.local/share/Steam/userdata/1/config"
           touch "$RUNNER_TEMP/game/forza.sh"
