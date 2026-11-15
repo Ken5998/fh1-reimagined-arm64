@@ -17,7 +17,8 @@
 #   scripts/build-shaders.sh SOURCE TOOLCHAIN DIR TU OUT_FILE
 #   FH1_SHADERS_CHECK=1 scripts/build-shaders.sh SOURCE TOOLCHAIN - - -   (tools only)
 #
-# SOURCE  scripts/prepare.sh's folder (reimagined, reiglue, fh2-recompiled)
+# SOURCE  scripts/prepare.sh's folder (reimagined with the renderer copied in,
+#         reiglue, fh2-recompiled)
 # DIR     build.sh's folder (files/game, files/tu4, user/, shader-dump/)
 # TU      4 to read Title Update 4's executables, 0 for the disc's
 set -euo pipefail
@@ -54,8 +55,10 @@ echo "Shader tools"
 "${cxx[@]}" -std=c++23 -O1 -I"$rec" -I"$rec/XenosRecomp" -I"$tp/fmt/include" -I"$tp/xxHash" \
     -include "$rec/pch_min.h" -DFMT_HEADER_ONLY -DXXH_INLINE_ALL -DNFSMW_RECOMP -DFH2_RECOMP \
     "$rec/nfsmw_hlsl.cpp" "$rec/XenosRecomp/shader_recompiler.cpp" -o "$bin/xenos_hlsl"
-"${cxx[@]}" -std=c++23 -O1 -DFH2_RECOMP -I"$fh2/app/src/nativo" -I"$tp/xxHash" -I"$tp/fmt/include" \
-    -DFMT_HEADER_ONLY "$fh2/tools/xenos/empaquetar.cpp" "$fh2/app/src/nativo/nfsmw_shader_library.cpp" \
+# The packer uses the game's copy of the library code (patches/game: FH1's limits), as the game's loader does.
+nativo="$src/reimagined/forza-recomp/src/nativo"
+"${cxx[@]}" -std=c++23 -O1 -DFH2_RECOMP -DFH1_RECOMP -I"$nativo" -I"$tp/xxHash" -I"$tp/fmt/include" \
+    -DFMT_HEADER_ONLY "$fh2/tools/xenos/empaquetar.cpp" "$nativo/nfsmw_shader_library.cpp" \
     -o "$bin/empaquetar"
 
 if [ "${FH1_SHADERS_CHECK:-0}" = 1 ]; then  # CI: the tools only, no game files

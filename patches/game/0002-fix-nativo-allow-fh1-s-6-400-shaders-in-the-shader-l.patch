@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Kenan=20Kasumovi=C4=87?=
+ <46025606+Ken5998@users.noreply.github.com>
+Date: Sun, 15 Nov 2026 20:22:24 +0000
+Subject: [PATCH] fix(nativo): allow FH1's 6,400 shaders in the shader library
+
+FH2 Recompiled's library format takes at most 4096 shaders, enough for
+FH2's ~3,700. Forza Horizon's disc, Title Update 4, DLC and executables
+give about 6,400 distinct ones, so packing them stopped at "Cantidad de
+shaders fuera de limites". With FH1_RECOMP the limit is 16384, for the
+packer (built from this copy) and the loader alike.
+---
+ forza-recomp/src/nativo/nfsmw_shader_library.cpp | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/forza-recomp/src/nativo/nfsmw_shader_library.cpp b/forza-recomp/src/nativo/nfsmw_shader_library.cpp
+index 85a6704..bc17161 100644
+--- a/forza-recomp/src/nativo/nfsmw_shader_library.cpp
++++ b/forza-recomp/src/nativo/nfsmw_shader_library.cpp
+@@ -29,7 +29,12 @@ constexpr size_t kMaxArchivo = 256 * 1024 * 1024;
+ #else
+ constexpr size_t kMaxArchivo = 64 * 1024 * 1024;
+ #endif
++#if defined(FH1_RECOMP)
++// FH1's library has about 6,400 shaders (disc, Title Update 4, DLC and executables), past FH2's 4096.
++constexpr size_t kMaxShaders = 16384;
++#else
+ constexpr size_t kMaxShaders = 4096;
++#endif
+ constexpr size_t kMaxOriginal = 64 * 1024;
+ constexpr size_t kMaxSpirv = 4 * 1024 * 1024;
+ 
+-- 
+2.43.0
+
