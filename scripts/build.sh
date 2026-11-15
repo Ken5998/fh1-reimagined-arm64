@@ -106,8 +106,10 @@ if [ "$tu" = 4 ]; then
         rm -rf "$files/tu4"
         mkdir -p "$files/tu4"
         python3 -I "$game/tools/apply_title_update.py" "$files/game/default.xex" "$tu_pkg" "$files/tu4/default.xex"
-        for f in default.xex XMediaFacade_default.xex SpeechFacade_default.xex; do
-            [ -f "$files/tu4/$f" ] || { echo "error: the title update did not give $f" >&2; exit 1; }
+        [ -f "$files/tu4/default.xex" ] || { echo "error: the title update did not give default.xex" >&2; exit 1; }
+        # A facade the update does not patch is the disc's.
+        for f in XMediaFacade_default.xex SpeechFacade_default.xex; do
+            [ -f "$files/tu4/$f" ] || cp "$files/game/$f" "$files/tu4/$f"
         done
         mark title-update "$tu_key"
     fi
